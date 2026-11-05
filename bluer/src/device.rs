@@ -270,6 +270,10 @@ impl Device {
         let _ = done_tx.send(());
         result
     }
+
+    pub async fn cancel_pairing(&self) -> Result<()> {
+        self.call_method("CancelPairing", ()).await
+    }
 }
 
 define_properties!(
