@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 ### Added
 - device: add Bonded property
+- device: add LE and BR/EDR bearers with their Paired, Bonded and Connected
+  properties, Connect and Disconnect methods, and property change events
+- device: add PreferredBearer property
+
+### Fixed
+- device: property changes on other interfaces of the device object, such as
+  org.bluez.Bearer.LE1, are no longer reported as Device1 properties
+- optional property getters return None when a D-Bus service answers
+  UnknownProperty or UnknownInterface, not only InvalidArgs
 
 ## 0.17.4 - 2025-06-06
 ### Fixed

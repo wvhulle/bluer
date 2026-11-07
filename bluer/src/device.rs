@@ -17,8 +17,8 @@ use uuid::Uuid;
 use crate::{
     all_dbus_objects,
     gatt::{self, remote::Service, SERVICE_INTERFACE},
-    Adapter, Address, AddressType, Error, ErrorKind, Event, InternalErrorKind, Modalias, Result, SessionInner,
-    SERVICE_NAME, TIMEOUT,
+    Adapter, Address, AddressType, Bearer, BearerKind, BearerProperty, Error, ErrorKind, Event, InternalErrorKind,
+    Modalias, Result, SessionInner, SERVICE_NAME, TIMEOUT,
 };
 
 pub(crate) const INTERFACE: &str = "org.bluez.Device1";
@@ -94,10 +94,20 @@ impl Device {
     pub async fn events(&self) -> Result<impl Stream<Item = DeviceEvent>> {
         let events = self.inner.events(self.dbus_path.clone(), false).await?;
         let stream = events.flat_map(move |event| match event {
-            Event::PropertiesChanged { changed, .. } => {
-                stream::iter(DeviceProperty::from_prop_map(changed).into_iter().map(DeviceEvent::PropertyChanged))
-                    .boxed()
-            }
+            Event::PropertiesChanged { interface, changed, .. } => match BearerKind::from_interface(&interface) {
+                Some(bearer) => stream::iter(
+                    BearerProperty::from_prop_map(changed)
+                        .into_iter()
+                        .map(move |property| DeviceEvent::BearerPropertyChanged { bearer, property }),
+                )
+                .boxed(),
+                None => stream::iter(
+                    DeviceProperty::from_interface_prop_map(&interface, changed)
+                        .into_iter()
+                        .map(DeviceEvent::PropertyChanged),
+                )
+                .boxed(),
+            },
             _ => stream::empty().boxed(),
         });
 
@@ -157,6 +167,21 @@ impl Device {
         }
 
         Ok(services)
+    }
+
+    pub fn bearer(&self, bearer_kind: BearerKind) -> Result<Bearer> {
+        Bearer::new(self.inner.clone(), self.adapter_name.clone(), self.address, bearer_kind)
+    }
+
+    pub async fn bearers(&self) -> Result<Vec<Bearer>> {
+        let mut provided_bearers = Vec::new();
+        for bearer_kind in BearerKind::ALL {
+            let bearer = self.bearer(bearer_kind)?;
+            if bearer.is_provided().await? {
+                provided_bearers.push(bearer);
+            }
+        }
+        Ok(provided_bearers)
     }
 
     /// Remote GATT service with specified id.
@@ -269,6 +294,10 @@ impl Device {
         let result = self.call_method("Pair", ()).await;
         let _ = done_tx.send(());
         result
+    }
+
+    pub async fn cancel_pairing(&self) -> Result<()> {
+        self.call_method("CancelPairing", ()).await
     }
 }
 
@@ -401,6 +430,13 @@ define_properties!(
             dbus: (INTERFACE, "WakeAllowed", bool, OPTIONAL),
             get: (is_wake_allowed, v => {v.to_owned()}),
             set: (set_wake_allowed, v => {v}),
+        );
+
+        property(
+            PreferredBearer, PreferredBearer,
+            dbus: (INTERFACE, "PreferredBearer", String, OPTIONAL),
+            get: (preferred_bearer, v => {v.parse()?}),
+            set: (set_preferred_bearer, v => {v.to_string()}),
         );
 
         /// The name alias for the remote device.
@@ -542,6 +578,20 @@ define_properties!(
     }
 );
 
+#[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, strum::Display, strum::EnumString)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PreferredBearer {
+    #[strum(serialize = "last-used")]
+    LastUsed,
+    #[strum(serialize = "bredr")]
+    BrEdr,
+    #[strum(serialize = "le")]
+    Le,
+    #[strum(serialize = "last-seen")]
+    LastSeen,
+}
+
 /// Bluetooth device event.
 #[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
 #[derive(Debug, Clone)]
@@ -549,4 +599,46 @@ define_properties!(
 pub enum DeviceEvent {
     /// Property changed.
     PropertyChanged(DeviceProperty),
+    BearerPropertyChanged { bearer: BearerKind, property: BearerProperty },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dbus::arg::PropMap;
+
+    fn connected_change(connected: bool) -> PropMap {
+        PropMap::from([("Connected".to_string(), Variant(Box::new(connected) as Box<dyn RefArg>))])
+    }
+
+    #[test]
+    fn device_interface_change_maps_to_device_property() {
+        let device_properties = DeviceProperty::from_interface_prop_map(INTERFACE, connected_change(false));
+        assert!(matches!(device_properties.as_slice(), [DeviceProperty::Connected(false)]));
+    }
+
+    #[test]
+    fn bearer_interface_change_is_not_a_device_property() {
+        let device_properties =
+            DeviceProperty::from_interface_prop_map("org.bluez.Bearer.LE1", connected_change(false));
+        assert!(device_properties.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod preferred_bearer_tests {
+    use super::*;
+
+    #[test]
+    fn preferred_bearer_uses_bluez_spelling() {
+        for (preferred_bearer, bluez_spelling) in [
+            (PreferredBearer::LastUsed, "last-used"),
+            (PreferredBearer::BrEdr, "bredr"),
+            (PreferredBearer::Le, "le"),
+            (PreferredBearer::LastSeen, "last-seen"),
+        ] {
+            assert_eq!(preferred_bearer.to_string(), bluez_spelling);
+            assert_eq!(bluez_spelling.parse::<PreferredBearer>().unwrap(), preferred_bearer);
+        }
+    }
 }

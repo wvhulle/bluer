@@ -159,7 +159,16 @@ macro_rules! dbus_interface {
                     log::trace!("{}: {}.{} = {:?}", &self.proxy().path, &interface, &name, &value);
                     Ok(Some(value))
                 }
-                Err(err) if err.name() == Some("org.freedesktop.DBus.Error.InvalidArgs") => {
+                Err(err)
+                    if matches!(
+                        err.name(),
+                        Some(
+                            "org.freedesktop.DBus.Error.InvalidArgs"
+                                | "org.freedesktop.DBus.Error.UnknownProperty"
+                                | "org.freedesktop.DBus.Error.UnknownInterface"
+                        )
+                    ) =>
+                {
                     log::trace!("{}: {}.{} = None", &self.proxy().path, &interface, &name);
                     Ok(None)
                 }
@@ -384,6 +393,19 @@ macro_rules! define_properties {
                     Self::from_variant_property(&name, value).ok().flatten()
                 ).collect()
             }
+
+            #[allow(dead_code)]
+            fn is_property_of_interface(interface: &str, name: &str) -> bool {
+                $( (interface == $dbus_interface && name == $dbus_name) || )* false
+            }
+
+            #[allow(dead_code)]
+            fn from_interface_prop_map(interface: &str, prop_map: dbus::arg::PropMap) -> Vec<Self> {
+                prop_map.into_iter()
+                    .filter(|(name, _value)| Self::is_property_of_interface(interface, name))
+                    .filter_map(|(name, value)| Self::from_variant_property(&name, value).ok().flatten())
+                    .collect()
+            }
         }
     }
 }
@@ -527,6 +549,8 @@ pub mod adv;
 #[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
 pub mod agent;
 #[cfg(feature = "bluetoothd")]
+mod bearer;
+#[cfg(feature = "bluetoothd")]
 mod device;
 #[cfg(feature = "bluetoothd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
@@ -548,7 +572,7 @@ mod session;
 mod sys;
 
 #[cfg(feature = "bluetoothd")]
-pub use crate::{adapter::*, device::*, session::*};
+pub use crate::{adapter::*, bearer::*, device::*, session::*};
 
 #[doc(no_inline)]
 pub use uuid::Uuid;
