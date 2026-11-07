@@ -397,6 +397,13 @@ define_properties!(
             set: (set_wake_allowed, v => {v}),
         );
 
+        property(
+            PreferredBearer, PreferredBearer,
+            dbus: (INTERFACE, "PreferredBearer", String, OPTIONAL),
+            get: (preferred_bearer, v => {v.parse()?}),
+            set: (set_preferred_bearer, v => {v.to_string()}),
+        );
+
         /// The name alias for the remote device.
         ///
         /// The alias can
@@ -536,6 +543,20 @@ define_properties!(
     }
 );
 
+#[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, strum::Display, strum::EnumString)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PreferredBearer {
+    #[strum(serialize = "last-used")]
+    LastUsed,
+    #[strum(serialize = "bredr")]
+    BrEdr,
+    #[strum(serialize = "le")]
+    Le,
+    #[strum(serialize = "last-seen")]
+    LastSeen,
+}
+
 /// Bluetooth device event.
 #[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
 #[derive(Debug, Clone)]
@@ -543,4 +564,22 @@ define_properties!(
 pub enum DeviceEvent {
     /// Property changed.
     PropertyChanged(DeviceProperty),
+}
+
+#[cfg(test)]
+mod preferred_bearer_tests {
+    use super::*;
+
+    #[test]
+    fn preferred_bearer_uses_bluez_spelling() {
+        for (preferred_bearer, bluez_spelling) in [
+            (PreferredBearer::LastUsed, "last-used"),
+            (PreferredBearer::BrEdr, "bredr"),
+            (PreferredBearer::Le, "le"),
+            (PreferredBearer::LastSeen, "last-seen"),
+        ] {
+            assert_eq!(preferred_bearer.to_string(), bluez_spelling);
+            assert_eq!(bluez_spelling.parse::<PreferredBearer>().unwrap(), preferred_bearer);
+        }
+    }
 }
