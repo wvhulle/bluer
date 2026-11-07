@@ -159,7 +159,16 @@ macro_rules! dbus_interface {
                     log::trace!("{}: {}.{} = {:?}", &self.proxy().path, &interface, &name, &value);
                     Ok(Some(value))
                 }
-                Err(err) if err.name() == Some("org.freedesktop.DBus.Error.InvalidArgs") => {
+                Err(err)
+                    if matches!(
+                        err.name(),
+                        Some(
+                            "org.freedesktop.DBus.Error.InvalidArgs"
+                                | "org.freedesktop.DBus.Error.UnknownProperty"
+                                | "org.freedesktop.DBus.Error.UnknownInterface"
+                        )
+                    ) =>
+                {
                     log::trace!("{}: {}.{} = None", &self.proxy().path, &interface, &name);
                     Ok(None)
                 }

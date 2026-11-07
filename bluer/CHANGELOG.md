@@ -4,6 +4,11 @@ All notable changes to BlueR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+### Fixed
+- optional property getters return None when a D-Bus service answers
+  UnknownProperty or UnknownInterface, not only InvalidArgs
+
 ## 0.17.4 - 2025-06-06
 ### Fixed
 - GATT hangs due to incorrect use of UNIX sockets by Jonas Rudloff
