@@ -540,6 +540,8 @@ pub mod adv;
 #[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
 pub mod agent;
 #[cfg(feature = "bluetoothd")]
+mod bearer;
+#[cfg(feature = "bluetoothd")]
 mod device;
 #[cfg(feature = "bluetoothd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
@@ -561,7 +563,7 @@ mod session;
 mod sys;
 
 #[cfg(feature = "bluetoothd")]
-pub use crate::{adapter::*, device::*, session::*};
+pub use crate::{adapter::*, bearer::*, device::*, session::*};
 
 #[doc(no_inline)]
 pub use uuid::Uuid;

@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- device: add LE and BR/EDR bearers with their Paired, Bonded and Connected
+  properties, Connect and Disconnect methods, and property change events
+
 ### Fixed
 - device: property changes on other interfaces of the device object, such as
   org.bluez.Bearer.LE1, are no longer reported as Device1 properties

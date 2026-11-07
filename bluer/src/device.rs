@@ -17,8 +17,8 @@ use uuid::Uuid;
 use crate::{
     all_dbus_objects,
     gatt::{self, remote::Service, SERVICE_INTERFACE},
-    Adapter, Address, AddressType, Error, ErrorKind, Event, InternalErrorKind, Modalias, Result, SessionInner,
-    SERVICE_NAME, TIMEOUT,
+    Adapter, Address, AddressType, Bearer, BearerKind, BearerProperty, Error, ErrorKind, Event, InternalErrorKind,
+    Modalias, Result, SessionInner, SERVICE_NAME, TIMEOUT,
 };
 
 pub(crate) const INTERFACE: &str = "org.bluez.Device1";
@@ -94,12 +94,20 @@ impl Device {
     pub async fn events(&self) -> Result<impl Stream<Item = DeviceEvent>> {
         let events = self.inner.events(self.dbus_path.clone(), false).await?;
         let stream = events.flat_map(move |event| match event {
-            Event::PropertiesChanged { interface, changed, .. } => stream::iter(
-                DeviceProperty::from_interface_prop_map(&interface, changed)
-                    .into_iter()
-                    .map(DeviceEvent::PropertyChanged),
-            )
-            .boxed(),
+            Event::PropertiesChanged { interface, changed, .. } => match BearerKind::from_interface(&interface) {
+                Some(bearer) => stream::iter(
+                    BearerProperty::from_prop_map(changed)
+                        .into_iter()
+                        .map(move |property| DeviceEvent::BearerPropertyChanged { bearer, property }),
+                )
+                .boxed(),
+                None => stream::iter(
+                    DeviceProperty::from_interface_prop_map(&interface, changed)
+                        .into_iter()
+                        .map(DeviceEvent::PropertyChanged),
+                )
+                .boxed(),
+            },
             _ => stream::empty().boxed(),
         });
 
@@ -159,6 +167,21 @@ impl Device {
         }
 
         Ok(services)
+    }
+
+    pub fn bearer(&self, bearer_kind: BearerKind) -> Result<Bearer> {
+        Bearer::new(self.inner.clone(), self.adapter_name.clone(), self.address, bearer_kind)
+    }
+
+    pub async fn bearers(&self) -> Result<Vec<Bearer>> {
+        let mut provided_bearers = Vec::new();
+        for bearer_kind in BearerKind::ALL {
+            let bearer = self.bearer(bearer_kind)?;
+            if bearer.is_provided().await? {
+                provided_bearers.push(bearer);
+            }
+        }
+        Ok(provided_bearers)
     }
 
     /// Remote GATT service with specified id.
@@ -545,6 +568,7 @@ define_properties!(
 pub enum DeviceEvent {
     /// Property changed.
     PropertyChanged(DeviceProperty),
+    BearerPropertyChanged { bearer: BearerKind, property: BearerProperty },
 }
 
 #[cfg(test)]
