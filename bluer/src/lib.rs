@@ -384,6 +384,19 @@ macro_rules! define_properties {
                     Self::from_variant_property(&name, value).ok().flatten()
                 ).collect()
             }
+
+            #[allow(dead_code)]
+            fn is_property_of_interface(interface: &str, name: &str) -> bool {
+                $( (interface == $dbus_interface && name == $dbus_name) || )* false
+            }
+
+            #[allow(dead_code)]
+            fn from_interface_prop_map(interface: &str, prop_map: dbus::arg::PropMap) -> Vec<Self> {
+                prop_map.into_iter()
+                    .filter(|(name, _value)| Self::is_property_of_interface(interface, name))
+                    .filter_map(|(name, value)| Self::from_variant_property(&name, value).ok().flatten())
+                    .collect()
+            }
         }
     }
 }

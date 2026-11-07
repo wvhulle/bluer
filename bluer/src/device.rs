@@ -94,10 +94,12 @@ impl Device {
     pub async fn events(&self) -> Result<impl Stream<Item = DeviceEvent>> {
         let events = self.inner.events(self.dbus_path.clone(), false).await?;
         let stream = events.flat_map(move |event| match event {
-            Event::PropertiesChanged { changed, .. } => {
-                stream::iter(DeviceProperty::from_prop_map(changed).into_iter().map(DeviceEvent::PropertyChanged))
-                    .boxed()
-            }
+            Event::PropertiesChanged { interface, changed, .. } => stream::iter(
+                DeviceProperty::from_interface_prop_map(&interface, changed)
+                    .into_iter()
+                    .map(DeviceEvent::PropertyChanged),
+            )
+            .boxed(),
             _ => stream::empty().boxed(),
         });
 
@@ -543,4 +545,27 @@ define_properties!(
 pub enum DeviceEvent {
     /// Property changed.
     PropertyChanged(DeviceProperty),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dbus::arg::PropMap;
+
+    fn connected_change(connected: bool) -> PropMap {
+        PropMap::from([("Connected".to_string(), Variant(Box::new(connected) as Box<dyn RefArg>))])
+    }
+
+    #[test]
+    fn device_interface_change_maps_to_device_property() {
+        let device_properties = DeviceProperty::from_interface_prop_map(INTERFACE, connected_change(false));
+        assert!(matches!(device_properties.as_slice(), [DeviceProperty::Connected(false)]));
+    }
+
+    #[test]
+    fn bearer_interface_change_is_not_a_device_property() {
+        let device_properties =
+            DeviceProperty::from_interface_prop_map("org.bluez.Bearer.LE1", connected_change(false));
+        assert!(device_properties.is_empty());
+    }
 }
